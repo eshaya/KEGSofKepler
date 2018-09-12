@@ -91,7 +91,6 @@ if ~keyword_set(bin) then bin = 1
    FOR mode=0,(4 < nmodes-1) DO PRINT, $
       mode+1, eigenvalues[mode], variances[mode]*100
    for i = 0,nobj-1 do result[i,*] = result[i,*]/sqrt(variance(result[i,*],/nan))
-
    ; Put back NaNs at beginning of LC
 ;   if first ne 0 then begin
 ;	   r0 = dblarr(nobj,nt0)

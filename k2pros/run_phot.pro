@@ -149,7 +149,7 @@ FUNCTION run_phot,campaign,nearby,npca,apsize=apsize,mask=mask,k2data=k2data,ccd
 	saveplt=saveplt,phots_pca=phots_pca,sum=sum,centroids=centroids,$
 	func=func,t0=t0,t2=t2,t3=t3,tfinal=tfinal,delt0=delt0,minflux=minflux,$
 	yrange=yrange,peak=peak,pend=pend,buffer=buffer,addnans=addnans,$
-	quicklook=quicklook,title=title
+	quicklook=quicklook,fix_sky=fix_sky,title=title
 
 COMMON lcfit1_com,tvector,raw3,time3,pca3,npca3,xc03,yc03,delt,whquiet,whnoquiet,repos,res,nomedian,p2,coeff2
 COMMON lcfitp0_com,fullp,res_p,smphotn
@@ -202,7 +202,7 @@ pend0 = pend
 
 dum=''
 IF N_ELEMENTS(kids) EQ 1 THEN BEGIN
-	help,kids,t0,t2,t3,tfinal,delt0,npca,minflux,quicklook,write
+	help,kids,t0,t2,t3,tfinal,delt0,npca,minflux,write,quicklook,fix_sky,apsize
 	print,'peak: ',peak
 	READ,'Continue? [y,n]:',dum
 	if (dum eq 'n') then return,0
@@ -367,7 +367,7 @@ ycmax = 300
 if ~quicklook then $
 	pdc_flux=read_k2llc(kids[0],campaign,time,xc,yc,sap_flux,data=llcdata)  $
 else $
-       k2cube = read_k2targ(kids[0],campaign,time,quality,flux_bkg,apmask) 
+       k2cube = read_k2targ(kids[0],campaign,time,quality,flux_bkg,apmask,quicklook=quicklook) 
 ; t0 sets earliest time to consider before explosion in LCFIT
 IF ~KEYWORD_SET(t0) THEN t0 = time[0]
 IF ~KEYWORD_SET(tfinal) THEN tfinal = time[-1]
@@ -451,22 +451,23 @@ FOREACH kid, kids DO BEGIN
 		   ; Get targdata either way
 		IF write NE 2 THEN $
 	   	    raw = phot_k2targ(campaign,kid,sum,apsize=apsize,mask=mask,$
-		   	k2data=k2data,time=time,noplot=1,peak=peak0,$
+		   	k2data=k2data,time=time,noplot=1,peak=peak0,fix_sky=fix_sky,$
 			quicklook=quicklook,bkg=bkg,sky=sky,data=targdata)  $
 		ELSE $
 	   	    raw = phot_k2targ(campaign,kid,sum,apsize=apsize,mask=mask,$
 		   	k2data=k2data,time=time,noplot=1,peak=peak0,apmask=apmask,$
-			data=targdata,bkg=bkg,sky=sky,quicklook=quicklook)  
+			data=targdata,bkg=bkg,sky=sky,quicklook=quicklook,fix_sky=fix_sky)  
 		; Get info from RB_LEVELS data in targdata
 		tags = GET_TAGS(targdata.targettables.data)
-		wh = where(tags eq '.RB_LEVEL',rbpresent)
+		wh = WHERE(tags eq '.RB_LEVEL',rbpresent)
 		if (rbpresent EQ 1) then begin
 			rb_level=targdata.targettables.data.rb_level
-			rbs = reform(max(rb_level[2,2:-2,*],dim=2) GT 1.5)
-			whrb = WHERE(rbs,/null,nrb)
+			; set rbs array values to 1 where bands detected
+			rbs = REFORM(MAX(rb_level[2,2:-2,*],dim=2) GT 1.5)
+			whrb = WHERE(rbs,/null,nrbs)
 			; rbs info is store in rawphots
 	        	rawphots[kid*5L] = rbs
-		endif else nrb = 0
+		endif else nrbs = 0
 
 	        rawphots[kid] = raw
 	        rawphots[kid*10L] = bkg
@@ -486,12 +487,11 @@ FOREACH kid, kids DO BEGIN
 		print,format='(a,i2,",",i2)','run_phot: Peak from rawphots: ',rawphots[skid+'peak']
 		if rawphots.hasKey(kid*5L) then begin
 		   rbs = rawphots[kid*5L] ; rbs is stored info in rawphots  hash
-		   whrb = WHERE(rbs,/null,nrb)
-		   nrb = N_ELEMENTS(whrb)
-	        endif else nrb = 0
+		   whrb = WHERE(rbs,/null,nrbs)
+	        endif else nrbs = 0
 		IF write EQ 2 THEN $ 
 			k2cube = read_k2targ(kid,campaign,time,quality,$
-			   flux_bkg,apmask0,data=targdata)
+			   flux_bkg,apmask0,data=targdata,quicklook=quicklook)
 	ENDELSE
 	if kid eq 251502099 then $
 	     foreach ind,[3110,3122,3134,3182,3194,3206,3218,3254,3266,3276,3243,3255,3267] do $
@@ -603,8 +603,8 @@ FOREACH kid, kids DO BEGIN
 	ENDIF
 	IF debug THEN PRINT,'debug run_phot - set windows'
 	; Remove cosmic rays 
-	crcut = 3.0d0
-	oddcut = 3d0
+	crcut = 4.0d0
+	oddcut = 4d0
 	smwide = 24
 	FOR i=1,3 DO BEGIN
 		sm3 = raw - SMOOTH(raw,smwide,/edge_truncate,/nan)
@@ -614,7 +614,7 @@ FOREACH kid, kids DO BEGIN
         	PRINT, 'Cosmic rays removed: ',nwhq
 		raw[whq] = !VALUES.D_NAN
 		whq = WHERE(sm3 LT -oddcut*stdev,/null, nwhq)
-        	PRINT, 'Too low ',nwhq,' By sigma x ',oddcut
+        	PRINT, nwhq, 'Too low by sigma x ',oddcut
 		raw[whq] = !VALUES.D_NAN
 	ENDFOR
 
@@ -800,7 +800,7 @@ FOREACH kid, kids DO BEGIN
 				ytitle='Normalized Flux',xstyle=1,xthick=2,$
 				ythick=2,sym_thick=1,sym_size=1,xrange=[time[0]-2,time[-1]+2])
 			; PLOT red RB_LEVEL > 1.
-			IF (nrb GT 0) then $
+			IF (nrbs GT 0) then $
 				plt=PLOT(/current,/over,time[whrb],photn[whrb],$
 				linestyle='',symbol='dot',color='red')
 		        ; Overplot rawn (raw LC) in cyan dot
@@ -874,7 +874,7 @@ FOREACH kid, kids DO BEGIN
 			    photn[whnoquietp2] = photn[whnoquietp2]*$
 				ffit1[whnoquietp2]/mnfit
 
-			    sm = SMOOTH(photn,32,/edge_truncate,/nan)
+			    sm = SMOOTH(photn,4,/edge_truncate,/nan)
 			    smphotn = sm[nonans]
 			    ; Put this into raw3 to solve in Powell again
 			    ; but we will just work on whnoquiet region
@@ -928,8 +928,10 @@ FOREACH kid, kids DO BEGIN
 
 	        ENDIF ELSE BEGIN ; if mode0 not 0, now mode0 eq 0
 
-			; Check if kid is on the nodo list for PCA
+			; Check if kid is on the nodo list for PCA or 
+			; if there are any rolling bands
 			wheredo = WHERE(nodo EQ kid,ndo)
+			if (nrbs GT 300) then ndo = 1
 			IF ndo GT 0 THEN $
 				PRINT,'run_phot: ',skid+' not included in PCA.'$
 			ELSE $
@@ -981,12 +983,12 @@ FOREACH kid, kids DO BEGIN
 		; Plot,first reduced LC with black dots
 		IF debug THEN PRINT,'debug: run_phot: About to start plot'
 		plt2=PLOT(/current,time,photplt,yrange=yrange0,symbol='dot',$
-			linestyle='',title=title0,xtitle='Day',xstyle=1,$
+			linestyle='',title=title0+', Ch:'+sccd+', Npca:'+snpca,xtitle='Day',xstyle=1,$
 			sym_size=1,sym_thick=1,$
 			ytitle='Normalized Flux',font_size=14,$
 			xthick=3,ythick=3,xrange=[time[0]-2,time[-1]+2])
 
-		IF (nrb gt 0) THEN plt2=PLOT(/current,/over,time[whrb],photplt[whrb],symbol='dot',$
+		IF (nrbs gt 0) THEN plt2=PLOT(/current,/over,time[whrb],photplt[whrb],symbol='dot',$
 			color='red',linestyle='',sym_thick=1,sym_size=1)
 
 		;plt2=PLOT(/overplot,time,SMOOTH(photn,48,/nan,/edge_truncate),/current)
@@ -1070,7 +1072,7 @@ FOREACH kid, kids DO BEGIN
 		     symbol='dot',yrange=yrange1,xrange=[time[0],time[-1]],$
 		     xshowtext=0,yshowtext=0,font_size=9,current=current,$
 		     xtickinterval=20,buffer=buffer,xstyle=3,position=pos[*,place-1])
-		IF (nrb gt 0) THEN plt=SCATTERPLOT(/over,time[whrb],photplt[whrb],symbol='dot',sym_color='red')
+		IF (nrbs gt 0) THEN plt=SCATTERPLOT(/over,time[whrb],photplt[whrb],symbol='dot',sym_color='red')
 		IF (((place++ -1) MOD (lx*ly)) GE (lx*ly-3)) THEN plt['axis0'].showtext=1
 		IF (nn GT nkids-2) THEN plt['axis0'].showtext=1
 	        current = 1

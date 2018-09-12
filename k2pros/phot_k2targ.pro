@@ -1,7 +1,7 @@
 function phot_k2targ,campaign,kid,sum,apsize=apsize,mask=mask,k2data=k2data,$
 	time=time,noplot=noplot,centroids=centroids,peak=peak,nollc=nollc,$
 	data=data,apmask=apmask,quicklook=quicklook,bkg=bkg,sky=sky,$
-	k2cube = k2cube
+	k2cube = k2cube,fix_sky=fix_sky
 
 ; Photometry on a single target
 
@@ -24,6 +24,8 @@ if keyword_set(apsize) then ap = (apsize-1)/2
 if keyword_set(mask) then ap = max(mask[*,0])
 
 if ~keyword_set(peak) then peak = [0,0]
+if ~keyword_set(fix_sky) then fix_sky = 0b
+if ~keyword_set(quicklook) then quicklook =  0b
 if ~keyword_set(mask) then mask = 0
 ; Get into starting directory
 cd,!workdir
@@ -38,7 +40,11 @@ i0 = where(k2data.k2_id) eq kid
 ;kepmag = k2data[i0].kepmag
 ;ra = k2data[i0].RA
 ;dec = k2data[i0].dec
-k2cube = read_k2targ(kid,campaign,time,quality,flux_bkg,apmask1,data=data)
+k2cube = read_k2targ(kid,campaign,time,quality,flux_bkg,apmask1,data=data,quicklook=quicklook)
+; If fix_sky we are going to use stamp edge for sky, so we can add flux_bkg 
+;  back into the flux because it will be removed later
+; if fix_sky then k2cube = k2cube+flux_bkg
+
 k2cube = double(k2cube)
 
 ; Get size of k2cube
@@ -65,32 +71,35 @@ sat = where(k2cube gt 5e5,nhi,/null)
 k2cube[*,*,sat] = !VALUES.D_NAN
 
 ;Remove Background if quicklook set.
-if quicklook then begin
+if quicklook or fix_sky then begin
 	; Create bkg array of median values with nt values.
 	; Form array of pixels at all 4 edges.  Ok to double count corners.
 ;;;;;;;  For removal of rolling bands
 	top = reform(k2cube[1:*,-1,*])
+	left = reform(k2cube[0,1:*,*])
 	bottom = reform(k2cube[1:*,0,*])
 	right = reform(k2cube[-1,1:*,*])
-	left = reform(k2cube[0,1:*,*])
 
 	;;; Remove bottom
 	;;bkg = [top,right,left]
 
-	;bkg = [top,bottom,right,left]
 	; Special case for SN2018oh
 	if (kid EQ 228682548) then bkg = [bottom,right]
 	right2 = reform(k2cube[-2,2:-2,*])
 	left2 = reform(k2cube[1,2:-2,*])
 	;bkg = [bkg,right2,left2]
 	bkg = [right,left,right2,left2]
+	;bkg = [top,bottom,right,left]
 
-	;Sort and take just the lower 2/3rds in intensity
+	;Sort and take just the lower 1/2rds in intensity
 	sz = size(bkg,/dimension)
-	bkglow = dblarr(3*sz[0]/4,nt)
-	for i=0,nt-1 do bkglow[*,i] = bkg[(sort(bkg[*,i]))[1:3*sz[0]/4],i]
+	n1 = 3*sz[0]/4
+	bkglow = dblarr(n1,nt)
+	for i=0,nt-1 do bkglow[*,i] = bkg[(sort(bkg[*,i]))[1:n1],i]
 	bkg = median(bkglow,dimension=1)
-	bkg = smooth(bkg,16,/nan,/edge_truncate)
+	; Smooth bkg over Nbkg time steps
+	nbkg = 10
+	bkg = smooth(bkg,nbkg,/nan,/edge_truncate)
 
 	; Remove 3 sigma deviations from bkg
 	;bkgmean = mean(bkg,/nan,dimension=1,/double)
@@ -167,13 +176,13 @@ endif else begin
 	print,'phot_k2targ: No peak, using whole stamp'
 endelse
 ;;;;;; TEST whole aperture
-;if mask[0] EQ -1 THEN BEGIN
-;        print,'phot_k2targ: No peak, using K2 project aperture mask'
-;	apmask[*,*] = 3
+if mask[0] EQ -1 THEN BEGIN
+        print,'phot_k2targ: No peak, using K2 project aperture mask'
+	apmask[*,*] = 3
 ;	apmask[10,8] = !VALUES.D_NAN
 ;	apmask[10,0] = !VALUES.D_NAN
 ;	apmask[10,1] = !VALUES.D_NAN
-;endif
+endif
 
 ; Convert apmask to double and 1 for in aperture an 0 for out of apeture
 apmask2 = INTARR(xs,ys)
@@ -213,7 +222,7 @@ k2cube2 = k2cube
 k2cube2[maskindices] = 0d0
 ; Total all wanted pixels in 2 dimensions, creating a light curve.
 phot = total(total(k2cube2,1),1)
-if quicklook then begin
+if quicklook or fix_sky then begin
 	nmask = TOTAL(apmask2)
 	phot = total(total(k2cube2,1),1) - nmask*bkg
 endif else phot = total(total(k2cube2,1),1)

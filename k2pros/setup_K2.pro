@@ -13,13 +13,14 @@ read,' Npca: ',npca
 read,' nopca: ',nopca
 read,' write: ', write
 read,' oneshot: ', oneshot
-nearby = ''
-; If Nearby campaign then enter letter N, otherwise hit return
-read,' Nearby: ', nearby
+; If Nearby campaign then enter 1, otherwise hit return
+read,' Nearby: ', nearby0
+if nearby0 eq 0 then nearby = '' else nearby = 'N'
 npca = fix(npca)
 nopca = fix(nopca)
 write = fix(write)
 bin = 1
+fix_sky = 0b
 t0 = 0
 t2 = 0
 t3 = 0
@@ -52,6 +53,8 @@ KSN2016f = 228753156
 KSN2017a = 246344673
 
 sns=read_delimited(file='KEGS_SN.csv',nskip=0,delimiter=',',/noprompt)
+sns16=sns[where(sns.campaign eq 'C16',nsn)]
+sns17=sns[where(sns.campaign eq 'C17',nsn)]
 
 
 if (campaign eq 1) then k2datafile='GO1074_Olling.txt'
@@ -63,9 +66,8 @@ if (campaign eq 10) then k2datafile='GO10070_Shaya.txt'
 if (campaign eq 12) then k2datafile='GO12116_Rest.txt'
 if (campaign eq 14) then k2datafile='GO14079_Rest.txt'
 if (campaign eq 14 and nearby EQ 'N') then k2datafile='GO14078_Garnavich.txt'
-;if (campaign eq 16) then k2datafile='G16tmp.txt'
 if (campaign eq 16) then k2datafile='GO16079_Rest.txt'
-if (campaign eq 17) then k2datafile='GO17.csv'
+if (campaign eq 17) then k2datafile='GO17059_Rest.csv'
 print,'campaign: ',campaign
 print,'apsize: ',apsize
 print,'bin: ',bin
@@ -104,7 +106,7 @@ filetest = file_search(photfile,count=count)
 ; Commonly used commands
 
 ccds = [1,84]
-quicklook=1
+quicklook=0b
 ; runk2,campaign,nearby,k2data,npca,ccds=ccds,write=write,apsize=apsize,centroids=centroids,oneshot=oneshot,bin=bin,rawstore=rawstore,quicklook=quicklook
 
 ;phot=run_phot(campaign,nearby,npca,apsize=apsize,k2data=k2data,kids=kids,pstep=1,centroids=centroids,bin=bin,t2=t2,t3=t3,tfinal=tfinal,t0=t0,quicklook=quicklook,yrange=yrange,pcavec=pcavec,write=write,minflux=minflux)
@@ -112,7 +114,7 @@ quicklook=1
 ;raw = phot_k2targ(campaign,kid,sum,apsize=apsize,mask=mask,$
 ;		   	k2data=k2data,time=time,noplot=1,peak=peak0) 
 
-; k2cube = read_k2targ(kid,campaign,time,quality,flux_bkg)
+; k2cube = read_k2targ(kid,campaign,time,quality,flux_bkg,quicklook=quicklook)
 
 ; plot_fluxtiles,kid,k2cube,time,campaign=campaign
 

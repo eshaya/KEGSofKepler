@@ -1,4 +1,4 @@
-function get_centroids,ccds,k2data,campaign,cen=cen,noposcorr=noposcorr
+function get_centroids,ccds,k2data,campaign,cen=cen,noposcorr=noposcorr,quicklook=quicklook
 ;+
 ; NAME:
 ;	get_centroids
@@ -49,7 +49,8 @@ print,'Usage: centroids = get_centroids(ccds,k2data,campaign)'
 return,0
 endif
 if keyword_set(cen) then centroids = cen
-if ~keyword_set(noposcorr) then noposcorr = 0
+if ~keyword_set(noposcorr) then noposcorr = 0b
+if ~keyword_set(quicklook) then quicklook = 0b
 for ccd = ccds[0],ccds[1] do begin
 	print,''
 	print,'Channel: ',ccd
@@ -63,7 +64,7 @@ for ccd = ccds[0],ccds[1] do begin
     kids = k2data[whccd].k2_id
     if ccd eq ccds[0] then begin
         if noposcorr then  $
-        k2cube = read_k2targ(kids[0],campaign,time,quality,flux_bkg,apmask) $
+        k2cube = read_k2targ(kids[0],campaign,time,quality,flux_bkg,apmask,quicklook=quicklook) $
      else $ 
         llc=read_k2llc(kids[0],campaign,time,xc,yc)
         nt = n_elements(time)
@@ -84,7 +85,7 @@ for ccd = ccds[0],ccds[1] do begin
         if ~noposcorr then begin
             llc=read_k2llc(kid,campaign,time,xc,yc)
         endif else begin
-            k2cube = read_k2targ(kid,campaign,time,quality,flux_bkg,apmask) 
+            k2cube = read_k2targ(kid,campaign,time,quality,flux_bkg,apmask,quicklook=quicklook) 
             quality[where(quality eq 32768L,/null)] = 0
             bad = where(quality ne 0,/null,nbad)
             k2cube[*,*,bad] = !VALUES.D_NAN

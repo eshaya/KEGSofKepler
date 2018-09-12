@@ -1,7 +1,7 @@
 pro runk2,campaign,nearby,k2data,npca,ccds=ccds,apsize=apsize,centroids=centroids,$
       write=write,oneshot=oneshot,rawstore=rawstore,tfinal=tfinal,$
       buffer=buffer,noplot=noplot,delt0=delt0,just_pca=just_pca, nopca = nopca,$
-      t2=t2,t0=t0,t3=t3,bin=bin,noprompts=noprompts,quicklook=quicklook
+      t2=t2,t0=t0,t3=t3,bin=bin,noprompts=noprompts,quicklook=quicklook,fix_sky=fix_sky
 
 ; Run K2 photometry on a set of ccds and obtain PCA vectors
 ; Inputs:
@@ -31,6 +31,8 @@ pro runk2,campaign,nearby,k2data,npca,ccds=ccds,apsize=apsize,centroids=centroid
 ; noplot - If set,then no plotting at all.
 ; just_pca - If set, then PCA analysis is done but faint galaxies are ignored.
 ; nopca - If set, then no PCA analysis is done
+; quicklook - Is set for early quicklook data only, not for usual release to MAST.
+; fix_sky - Use edges of stamp to determine a sky background.  Useful for rolling bands or other artifacts.
 
 ; DirectoFry Structure
 ;  Top level is workdir (I usually name it K2)
@@ -43,11 +45,13 @@ pro runk2,campaign,nearby,k2data,npca,ccds=ccds,apsize=apsize,centroids=centroid
 ;  plots - output plots
 ;  stats - output files of statistics
 
-IF ~KEYWORD_SET(rawstore) THEN rawstore = 0
-IF ~KEYWORD_SET(qucklook) THEN qucklook = 0
-IF ~KEYWORD_SET(noprompts) THEN noprompts = 0
-IF ~KEYWORD_SET(noplot) THEN noplot = 0
-IF ~KEYWORD_SET(just_pca) THEN just_pca = 0
+IF ~KEYWORD_SET(rawstore) THEN rawstore = 0b
+IF ~KEYWORD_SET(quicklook) THEN quicklook = 0b
+IF ~KEYWORD_SET(fix_sky) THEN fix_sky = 0b
+IF ~KEYWORD_SET(noposcorr) THEN noposcorr = 0b
+IF ~KEYWORD_SET(noprompts) THEN noprompts = 0b
+IF ~KEYWORD_SET(noplot) THEN noplot = 0b
+IF ~KEYWORD_SET(just_pca) THEN just_pca = 0b
 IF ~KEYWORD_SET(apsize) THEN BEGIN
 	PRINT,'No apsize set, using mymask'
 	apsize = 0
@@ -77,7 +81,7 @@ IF ~KEYWORD_SET(ccds) THEN BEGIN
 ENDIF
 if ~noprompts then $
 	HELP,apsize,bin,npca,oneshot,campaign,write,t0,t2,t3,tfinal,$
-	delt0,nopca,just_pca,noplot,rawstore
+	delt0,nopca,just_pca,noplot,rawstore,quicklook,fix_sky
 PRINT,'CCDs:',ccds
 dum=''
 if ~noprompts then READ,' Continue?',dum
@@ -91,10 +95,11 @@ IF centroids[0] EQ 0 AND campaign NE 1 THEN BEGIN
 	RESTORE,cenfile
         ENDIF ELSE BEGIN 
 		dum = ''
-		read, 'SETTING NOPOSCORR in CENTOIDS',dum
-		noposcorr = 1
+		if quicklook then noposcorr = 1b
+		if noposcorr then read, 'SETTING NOPOSCORR in CENTOIDS',dum
 
-	centroids = get_centroids([1,84],k2data,campaign,noposcorr=noposcorr)
+	centroids = get_centroids([1,84],k2data,campaign,noposcorr=noposcorr,$
+		quicklook=quicklook)
 	READ,' Centroids good?', dum
 	IF dum EQ 'n' THEN STOP
 	SAVE,centroids,filename=cenfile
@@ -159,10 +164,11 @@ FOR ccd = ccds[0],ccds[1] DO BEGIN
 	; if it is set we do only the other section.
 	IF oneshot EQ 0 THEN BEGIN
 	  ; starting first run_phot
-	  phots=run_phot(campaign,nearby,npca0,apsize=apsize,mask=mask,k2data=k2data,$
-		centroids=centroids,pstep=1,ccd=ccd,bin=bin,/noplot,quicklook=quicklook,$
-		rawphots=rawphots,pcavec=pcavec,phots_pca=phots_pca,$
-		t3=t3,t2=t2,t0=t0,tfinal=tfinal,peak=0,/just_pca,buffer=buffer)
+	  phots=run_phot(campaign,nearby,npca0,apsize=apsize,mask=mask,$
+		  k2data=k2data,centroids=centroids,pstep=1,ccd=ccd,bin=bin, $
+		  /noplot,quicklook=quicklook,fix_sky=fix_sky,$
+		  rawphots=rawphots,pcavec=pcavec,phots_pca=phots_pca,$
+		 t3=t3,t2=t2,t0=t0,tfinal=tfinal,peak=0,/just_pca,buffer=buffer)
 	  IF phots[0] EQ -1 THEN CONTINUE
 	  IF t2 EQ 0 AND t3 EQ 0 THEN BEGIN
              if (size(phots_pca,/n_dim) NE 2) then continue
@@ -182,8 +188,9 @@ FOR ccd = ccds[0],ccds[1] DO BEGIN
 	; Running run_phot for second time if oneshot=0, otherwise first time
 	phots=run_phot(campaign,nearby,npca1,mask=mask,apsize=apsize,k2data=k2data,$
 		pstep=1,ccd=ccd,bin=bin,pcavec=pcavec,/saveplt,rawphots=rawphots,$
-		centroids=centroids,phots_pca=phots_pca,write=write,t2=t2,quicklook=quicklook,$
-		t3=t3,t0=t0,tfinal=tfinal,peak=0,buffer=buffer,noplot=noplot,delt0=delt0,func='lcfit')
+		centroids=centroids,phots_pca=phots_pca,write=write,t2=t2,$
+		quicklook=quicklook,fix_sky=fix_sky,t3=t3,t0=t0,tfinal=tfinal,$
+		peak=0,buffer=buffer,noplot=noplot,delt0=delt0,func='lcfit')
 	IF phots[0] EQ -1 THEN CONTINUE
 	IF t2 EQ 0 AND t3 EQ 0  AND nopca EQ 0 THEN BEGIN
 	    cbv = k2pca(campaign,phots_pca,bin=bin,ap=ap,variances=variances) 

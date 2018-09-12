@@ -1,10 +1,6 @@
-function read_k2targ,kid,campaign,time,quality,flux_bkg,apmask,data=data
+function read_k2targ,kid,campaign,time,quality,flux_bkg,apmask,data=data,quicklook=quicklook
 
-	;quicklook = 0b
-	;;;; Only for quicklook.  OTHERWISE MUST BE 0!!!
-	quicklook = 1b
-	;;;;
-
+	if ~keyword_set(quicklook) then quicklook = 0b
 	if campaign ge 10 then format ='(I2)' else format='(I1)'
 	sdir = 'Campaign'+string(format=format,campaign)+'/tpf'
 	cd, !workdir + '/' + sdir
@@ -14,13 +10,6 @@ function read_k2targ,kid,campaign,time,quality,flux_bkg,apmask,data=data
 	endif
 	cd, '/home/eshaya/Documents/Kepler/K2'
         time = data.targettables.data.time
-	if quicklook and campaign eq 17 and time[-1] lt time[-2] then begin
-		k2c1 = data.targettables.data 
-		k2c2 = k2c1
-		k2c2[3097]= k2c1[-1]
-		k2c2[3098:*] = k2c1[3097:-2]
-		data.targettables.data = k2c2
-	endif
 	
 	if quicklook then begin
 		k2cube = double(data.targettables.data.raw_cnts) 
@@ -31,7 +20,6 @@ function read_k2targ,kid,campaign,time,quality,flux_bkg,apmask,data=data
 		num_frm = sxpar(data.targettables.header,'NUM_FRM')
 		nans = where(k2cube eq -1)
 		k2cube = double(k2cube - lcfxdoff + meanblack*nreadout)
-;			/double(int_time*num_frm)
 		k2cube[nans] = !VALUES.D_NAN
 	endif else k2cube = data.targettables.data.flux
 	apmask = data.aperture.data
@@ -45,4 +33,3 @@ function read_k2targ,kid,campaign,time,quality,flux_bkg,apmask,data=data
 	flux_bkg = data.targettables.data.flux_bkg
 return,k2cube
 end
-
